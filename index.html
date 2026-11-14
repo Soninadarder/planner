@@ -997,7 +997,7 @@ var NOTAS = {}; try { NOTAS = JSON.parse(LS("notas_cache") || "{}") || {}; } cat
 var COLA = {}; try { COLA = JSON.parse(LS("notas_cola") || "{}") || {}; } catch(e) {}
 function guarda(){ LS("notas_cache", JSON.stringify(NOTAS)); LS("notas_cola", JSON.stringify(COLA)); }
 function H(){ return { "apikey": CFG.key, "Authorization": "Bearer " + CFG.key, "x-clave": CLAVE, "Content-Type": "application/json" }; }
-function carga(){ if (!ONLINE) return; fetch(CFG.url + "/rest/v1/notas?select=*", { headers: H() }).then(function(r){ return r.ok ? r.json() : []; }).then(function(a){ (a || []).forEach(function(n){ var l = NOTAS[n.id]; if (!COLA[n.id] && (!l || (l.actualizado || "") <= (n.actualizado || ""))) NOTAS[n.id] = n; }); guarda(); envia(); refresca(); }).catch(function(){}); }
+function carga(){ if (!ONLINE) return; fetch(CFG.url + "/rest/v1/notas?select=*", { headers: H() }).then(function(r){ return r.ok ? r.json() : []; }).then(function(a){ (a || []).forEach(function(n){ var l = NOTAS[n.id]; if (!COLA[n.id] && (!l || (l.actualizado || "") <= (n.actualizado || ""))) NOTAS[n.id] = n; }); guarda(); envia(); refresca(); var od = document.getElementById("nt-diario"); if (od && !od.hidden) diario(); }).catch(function(){}); }
 function envia(){ if (!ONLINE) return; var ids = Object.keys(COLA); if (!ids.length) return; var body = ids.map(function(i){ return NOTAS[i]; }).filter(Boolean);
  fetch(CFG.url + "/rest/v1/notas?on_conflict=id", { method: "POST", headers: Object.assign(H(), { "Prefer": "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify(body) }).then(function(r){ if (r.ok) { ids.forEach(function(i){ delete COLA[i]; }); guarda(); estado(); } }).catch(function(){}); }
 window.addEventListener("online", envia); setInterval(envia, 30000);
@@ -1020,8 +1020,41 @@ function cambia(box){ var i = +box.getAttribute("data-i"); var n = info(i); if (
 document.addEventListener("input", function(e){ var b = e.target.closest && e.target.closest(".nt"); if (b) cambia(b); });
 document.addEventListener("change", function(e){ var b = e.target.closest && e.target.closest(".nt"); if (b) cambia(b); });
 if (typeof openCell === "function") { var _oc = openCell; openCell = function(i){ _oc(i); var bx = document.querySelector("#ficha .fbox"); if (bx && !bx.querySelector(".nt")) { var h = seccion(i); if (h) { var hd = bx.querySelector(".fti") || bx.firstChild; var t = document.createElement("div"); t.innerHTML = h; hd.parentNode.insertBefore(t.firstChild, hd.nextSibling); estado(); } } }; }
+
+// 📌 RECORDATORIOS (dictados a Siri con el atajo «Apunta en el planner»): se colocan en el día que diga la frase
+var DS = ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"], MS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+function sinT(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+function dia(s){ var p = String(s || "").split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+function objetivo(n){ var base = dia(n.fecha), t = sinT(n.texto), m, d;
+ if (n.hora && /^\d{4}-\d\d-\d\d$/.test(n.hora)) return dia(n.hora); // fecha ya fijada por Claude
+ if (/pasado manana/.test(t)) return new Date(base.getFullYear(), base.getMonth(), base.getDate() + 2);
+ if (/\bmanana\b/.test(t.replace(/\b(por|de|a) la manana\b/g, ""))) return new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1);
+ if ((m = t.match(/dentro de (\d+) dias?/))) return new Date(base.getFullYear(), base.getMonth(), base.getDate() + (+m[1]));
+ if ((m = t.match(/\b(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/))) { d = new Date(base.getFullYear(), MS.indexOf(m[2]), +m[1]); if (d < base) d.setFullYear(d.getFullYear() + 1); return d; }
+ if ((m = t.match(/\b(\d{1,2})[\/-](\d{1,2})\b/))) { d = new Date(base.getFullYear(), +m[2] - 1, +m[1]); if (d < base) d.setFullYear(d.getFullYear() + 1); return d; }
+ var sig = /semana que viene|proxima semana|semana proxima/.test(t);
+ for (var i = 1; i < 7; i++) if (new RegExp("\\b" + DS[i] + "\\b").test(t)) { d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1); while (d.getDay() !== i) d.setDate(d.getDate() + 1); if (sig && (d - base) < 7 * 864e5 && d.getDay() >= base.getDay()) d.setDate(d.getDate() + 7); return d; }
+ if ((m = t.match(/\b(?:el|dia) (\d{1,2})\b/))) { d = new Date(base.getFullYear(), base.getMonth(), +m[1]); if (d < base) d.setMonth(d.getMonth() + 1); return d; }
+ if (sig) { d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1); while (d.getDay() !== 1) d.setDate(d.getDate() + 1); return d; }
+ return base; }
+function recs(){ return Object.keys(NOTAS).map(function(k){ return NOTAS[k]; }).filter(function(n){ return n && /recordatorio/i.test(n.grupo || "") && (n.texto || "").trim() && n.titulo !== "borrado"; }); }
+function delDia(d){ var k = iso(d); return recs().filter(function(n){ return iso(objetivo(n)) === k; }); }
+function marca(id, v){ var o = NOTAS[id]; if (!o) return; o.hecho = v; o.actualizado = new Date().toISOString(); COLA[id] = 1; guarda(); envia(); refrescaRec(); }
+function itemRec(n, corto){ return '<label class="rc-it' + (n.hecho ? ' ok' : '') + '"><input type="checkbox" data-rc="' + esc(n.id) + '"' + (n.hecho ? ' checked' : '') + '> <span>📌 ' + esc(n.texto) + (corto ? '' : ' <small>· ' + objetivo(n).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" }) + '<\/small>') + '<\/span><\/label>'; }
+function refrescaRec(){
+ var hoy = new Date(); hoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+ var td = document.querySelector(".today");
+ if (td) { var bx = td.querySelector(".rc-box"); if (!bx) { bx = document.createElement("div"); bx.className = "rc-box"; var big = td.querySelector(".big"); if (big && big.nextSibling) td.insertBefore(bx, big.nextSibling); else td.appendChild(bx); }
+  var h = delDia(hoy), prox = recs().filter(function(n){ var d = objetivo(n); return d > hoy && (d - hoy) <= 7 * 864e5 && !n.hecho; }).sort(function(a, b){ return objetivo(a) - objetivo(b); });
+  var antes = recs().filter(function(n){ return objetivo(n) < hoy && !n.hecho; });
+  bx.innerHTML = (h.length || antes.length ? '<div class="rc-t">📌 Para hoy<\/div>' + antes.concat(h).map(function(n){ return itemRec(n, h.indexOf(n) >= 0); }).join("") : '') + (prox.length ? '<div class="rc-t">📌 Próximos días<\/div>' + prox.map(function(n){ return itemRec(n, false); }).join("") : '');
+  bx.hidden = !bx.innerHTML; }
+ var c = document.querySelector("[data-cell]"); var x = c && typeof CELLS !== "undefined" ? CELLS[+c.getAttribute("data-cell")] : null;
+ if (x && window.PL) { var lun = PL.mon(x.w.n); document.querySelectorAll(".dh").forEach(function(dh, i){ var l = delDia(new Date(lun.getFullYear(), lun.getMonth(), lun.getDate() + i)); var r = dh.querySelector(".rc-dh"); if (!l.length) { if (r) r.remove(); return; } if (!r) { r = document.createElement("div"); r.className = "rc-dh"; dh.appendChild(r); } r.innerHTML = l.map(function(n){ return '<span class="' + (n.hecho ? 'ok' : '') + '">📌 ' + esc(n.texto) + '<\/span>'; }).join(""); }); }
+}
+document.addEventListener("change", function(e){ var k = e.target.getAttribute && e.target.getAttribute("data-rc"); if (k) marca(k, e.target.checked); });
 // marca ✏️ en las clases con nota (semana)
-function refresca(){ document.querySelectorAll("[data-cell]").forEach(function(el){ var n = info(+el.getAttribute("data-cell")); if (!n) return; var o = NOTAS[n.id]; var has = o && (o.texto || "").trim(); var mk = el.querySelector(".nt-mk"); if (has && !mk) { mk = document.createElement("span"); mk.className = "nt-mk"; el.appendChild(mk); } if (mk) { if (!has) mk.remove(); else mk.textContent = o.hecho ? "✏️✓" : "✏️"; } }); }
+function refresca(){ try { refrescaRec(); } catch(e) {} document.querySelectorAll("[data-cell]").forEach(function(el){ var n = info(+el.getAttribute("data-cell")); if (!n) return; var o = NOTAS[n.id]; var has = o && (o.texto || "").trim(); var mk = el.querySelector(".nt-mk"); if (has && !mk) { mk = document.createElement("span"); mk.className = "nt-mk"; el.appendChild(mk); } if (mk) { if (!has) mk.remove(); else mk.textContent = o.hecho ? "✏️✓" : "✏️"; } }); }
 new MutationObserver(function(){ clearTimeout(refresca.t); refresca.t = setTimeout(refresca, 120); }).observe(document.body, { childList: true, subtree: true });
 // DIARIO DEL CURSO
 function diario(){ var o = document.getElementById("nt-diario"); if (!o) { o = document.createElement("div"); o.id = "nt-diario"; o.className = "fov"; document.body.appendChild(o); }
@@ -1030,7 +1063,7 @@ function diario(){ var o = document.getElementById("nt-diario"); if (!o) { o = d
  var l = (cs[sel] || []).filter(function(n){ return !solo || !n.hecho; }).sort(function(a, b){ return (a.fecha + a.hora) < (b.fecha + b.hora) ? -1 : 1; });
  o.innerHTML = '<div class="fbox nt-dbox" role="dialog" aria-modal="true"><div class="fhd"><b style="font-size:18px">📓 Diario del curso<\/b><button class="fx" data-ntclose="1" aria-label="Cerrar">✕<\/button><\/div>' +
   '<div class="nt-row">' + (cur.length ? cur : [sel]).map(function(c){ return '<button class="nt-b' + (c === sel ? " on" : "") + '" data-ntc="' + c + '">Curso ' + c + '<\/button>'; }).join("") + '<button class="nt-b' + (solo ? " on" : "") + '" data-ntp="1">Solo pendientes<\/button><button class="nt-b" data-ntprint="1">🖨 Imprimir<\/button><\/div>' +
-  (l.length ? l.map(function(n){ return '<div class="nt-it"><div class="nt-h">' + (n.hecho ? "✓ " : "⏳ ") + esc(n.fecha.split("-").reverse().join("/")) + ' · ' + esc(n.hora) + ' · ' + esc(n.grupo) + ' · <i>' + esc(n.sesion || n.titulo) + '<\/i><\/div><div>' + esc(n.texto).replace(/\n/g, "<br>") + '<\/div><\/div>'; }).join("") : '<p class="note">Todavía no hay notas. Abre una clase en «Planner · semana» y escribe en «✏️ Mis notas de esta clase».<\/p>') + '<\/div>';
+  (l.length ? l.map(function(n){ return '<div class="nt-it"><div class="nt-h">' + (n.hecho ? "✓ " : "⏳ ") + esc((/recordatorio/i.test(n.grupo || "") ? iso(objetivo(n)) : n.fecha).split("-").reverse().join("/")) + (n.hora && !/-/.test(n.hora) ? ' · ' + esc(n.hora) : '') + ' · ' + esc(n.grupo) + ' · <i>' + esc(n.sesion || n.titulo) + '<\/i><\/div><div>' + esc(n.texto).replace(/\n/g, "<br>") + '<\/div><\/div>'; }).join("") : '<p class="note">Todavía no hay notas. Abre una clase en «Planner · semana» y escribe en «✏️ Mis notas de esta clase».<\/p>') + '<\/div>';
  o.hidden = false; }
 document.addEventListener("click", function(e){ var t = e.target; if (!t.closest) return; var o = document.getElementById("nt-diario");
  if (t.closest(".nt-key")) { e.preventDefault(); var k = (prompt("Pega aquí tu código de notas (está en el mensaje de Claude):") || "").trim().replace(/^.*clave=/, ""); if (k.length >= 20) { LS("notas_clave", k); CLAVE = k; ONLINE = true; aviso("✅ Dispositivo reconocido"); carga(); envia(); estado(); } return; }
@@ -1046,6 +1079,7 @@ var st = document.createElement("style"); st.textContent =
  ".nt-dbox{max-height:85vh;overflow:auto}.nt-b{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;cursor:pointer}.nt-b.on{background:var(--navy);color:#fff}" +
  ".nt-it{border-top:1px solid var(--line);padding:8px 0}.nt-h{font-size:13px;color:var(--muted);margin-bottom:2px}" +
  ".nt-toast{position:fixed;left:50%;top:20px;transform:translateX(-50%);background:#1B7F3B;color:#fff;padding:10px 16px;border-radius:10px;z-index:99;font-weight:600}" +
+ ".rc-box{margin:8px 0 4px;padding:10px 12px;border:2px solid var(--navy);border-radius:12px;display:flex;flex-direction:column;gap:6px}.rc-t{font-weight:800;font-size:13px;letter-spacing:.04em;color:var(--navy)}.rc-it{display:flex;gap:8px;align-items:flex-start;font-size:15px}.rc-it small{color:var(--muted)}.rc-it.ok span{text-decoration:line-through;opacity:.6}.rc-dh{display:flex;flex-direction:column;gap:2px;margin-top:3px}.rc-dh span{font-size:11px;font-weight:700;line-height:1.25;background:#FFF4C2;color:#3A3000;border:1px solid #E0C65A;border-radius:6px;padding:2px 4px}.rc-dh span.ok{text-decoration:line-through;opacity:.6}" +
  "@media print{body>*:not(#nt-diario){display:none!important}#nt-diario{position:static!important;background:none!important}.nt-dbox{max-height:none;box-shadow:none}.nt-row,.fx{display:none!important}}";
 document.head.appendChild(st);
 var b = document.createElement("button"); b.id = "nt-btn"; b.textContent = "📓 Diario"; b.title = "Diario del curso: todas tus notas"; document.body.appendChild(b);
