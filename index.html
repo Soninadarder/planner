@@ -1048,11 +1048,11 @@ function refrescaRec(){
  if (td) { var bx = td.querySelector(".rc-box"); if (!bx) { bx = document.createElement("div"); bx.className = "rc-box"; var big = td.querySelector(".big"); if (big && big.nextSibling) td.insertBefore(bx, big.nextSibling); else td.appendChild(bx); }
   var h = delDia(hoy), prox = recs().filter(function(n){ var d = objetivo(n); return d > hoy && (d - hoy) <= 7 * 864e5 && !n.hecho; }).sort(function(a, b){ return objetivo(a) - objetivo(b); });
   var antes = recs().filter(function(n){ return objetivo(n) < hoy && !n.hecho; });
-  bx.innerHTML = (h.length || antes.length ? '<div class="rc-t">📌 Para hoy<\/div>' + antes.concat(h).map(function(n){ return itemRec(n, h.indexOf(n) >= 0); }).join("") : '') + (prox.length ? '<div class="rc-t">📌 Próximos días<\/div>' + prox.map(function(n){ return itemRec(n, false); }).join("") : '');
-  if (CFG.key.indexOf("__") !== 0 && (!CLAVE || /no devuelve|no está reconocido|responde/.test(EST))) bx.innerHTML = '<div class="rc-t">🔑 Este aparato todavía no lee tus notas<\/div><a href="#" class="nt-key" style="font-weight:700">Toca aquí y pega tu código de notas<\/a>' + bx.innerHTML;
-  bx.hidden = !bx.innerHTML; }
+  var _h = (h.length || antes.length ? '<div class="rc-t">📌 Para hoy<\/div>' + antes.concat(h).map(function(n){ return itemRec(n, h.indexOf(n) >= 0); }).join("") : '') + (prox.length ? '<div class="rc-t">📌 Próximos días<\/div>' + prox.map(function(n){ return itemRec(n, false); }).join("") : '');
+  if (CFG.key.indexOf("__") !== 0 && (!CLAVE || /no devuelve|no está reconocido|responde/.test(EST))) _h = '<div class="rc-t">🔑 Este aparato todavía no lee tus notas<\/div><a href="#" class="nt-key" style="font-weight:700">Toca aquí y pega tu código de notas<\/a>' + _h;
+  if (bx._h !== _h) { bx._h = _h; bx.innerHTML = _h; } bx.hidden = !_h; }
  var c = document.querySelector("[data-cell]"); var x = c && typeof CELLS !== "undefined" ? CELLS[+c.getAttribute("data-cell")] : null;
- if (x && window.PL) { var lun = PL.mon(x.w.n); document.querySelectorAll(".dh").forEach(function(dh, i){ var l = delDia(new Date(lun.getFullYear(), lun.getMonth(), lun.getDate() + i)); var r = dh.querySelector(".rc-dh"); if (!l.length) { if (r) r.remove(); return; } if (!r) { r = document.createElement("div"); r.className = "rc-dh"; dh.appendChild(r); } r.innerHTML = l.map(function(n){ return '<span class="' + (n.hecho ? 'ok' : '') + '" data-edit="' + esc(n.id) + '" title="Toca para cambiarlo">📌 ' + esc(n.texto) + '<\/span>'; }).join(""); }); }
+ if (x && window.PL) { var lun = PL.mon(x.w.n); document.querySelectorAll(".dh").forEach(function(dh, i){ var l = delDia(new Date(lun.getFullYear(), lun.getMonth(), lun.getDate() + i)); var r = dh.querySelector(".rc-dh"); if (!l.length) { if (r) r.remove(); return; } if (!r) { r = document.createElement("div"); r.className = "rc-dh"; dh.appendChild(r); } var _r = l.map(function(n){ return '<span class="' + (n.hecho ? 'ok' : '') + '" data-edit="' + esc(n.id) + '" title="Toca para cambiarlo">📌 ' + esc(n.texto) + '<\/span>'; }).join(""); if (r._h !== _r) { r._h = _r; r.innerHTML = _r; } }); }
 }
 
 
@@ -1062,7 +1062,7 @@ function quitar(id){ var o = NOTAS[id]; if (!o) return; if (!confirm("¿Quitar d
 document.addEventListener("click", function(e){ var b = e.target.closest && e.target.closest("[data-del]"); if (b) { e.preventDefault(); e.stopPropagation(); quitar(b.getAttribute("data-del")); } }, true);
 document.addEventListener("change", function(e){ var k = e.target.getAttribute && e.target.getAttribute("data-rc"); if (k) marca(k, e.target.checked); });
 // marca ✏️ en las clases con nota (semana)
-function refresca(){ try { refrescaRec(); } catch(e) {} document.querySelectorAll("[data-cell]").forEach(function(el){ var n = info(+el.getAttribute("data-cell")); if (!n) return; var o = NOTAS[n.id]; var has = o && (o.texto || "").trim(); var mk = el.querySelector(".nt-mk"); if (has && !mk) { mk = document.createElement("span"); mk.className = "nt-mk"; el.appendChild(mk); } if (mk) { if (!has) mk.remove(); else mk.textContent = o.hecho ? "✏️✓" : "✏️"; } }); }
+function refresca(){ try { refrescaRec(); } catch(e) {} document.querySelectorAll("[data-cell]").forEach(function(el){ var n = info(+el.getAttribute("data-cell")); if (!n) return; var o = NOTAS[n.id]; var has = o && (o.texto || "").trim(); var mk = el.querySelector(".nt-mk"); if (has && !mk) { mk = document.createElement("span"); mk.className = "nt-mk"; el.appendChild(mk); } if (mk) { if (!has) mk.remove(); else { var _t = o.hecho ? "✏️✓" : "✏️"; if (mk.textContent !== _t) mk.textContent = _t; } } }); }
 new MutationObserver(function(){ clearTimeout(refresca.t); refresca.t = setTimeout(refresca, 120); }).observe(document.body, { childList: true, subtree: true });
 // DIARIO DEL CURSO
 function diario(){ var o = document.getElementById("nt-diario"); if (!o) { o = document.createElement("div"); o.id = "nt-diario"; o.className = "fov"; document.body.appendChild(o); }
