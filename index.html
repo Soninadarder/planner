@@ -1097,3 +1097,99 @@ carga(); estado();
 
 </script>
 <!--/NOTAS-->
+<!--HORARIO-->
+<script>
+/* HORARIO de Sonina 26-27 (definitivo) · núcleo común: app (botón 🕘 Horario) y atajos de Siri */
+var HZ = (function(){
+var T = [["M5B","G","M5B","E6B","E4B"],["R2B","M5B","M5A","R3B","G"],["R3A","M5A","E3B","M5A","P"],["R6B","E5B","R4B","R4A","P"],["M5A","E6A","TM5B","R5A","P"],["E3A","TM5A","E5A","E4A","G"],["R5B","R6A","R2A","M5B","G"]];
+var H = [["9:00",540,585],["9:45",585,630],["11:15",675,720],["12:00",720,765],["12:45",765,810],["15:30",930,975],["16:15",975,1020]];
+var DIAS = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+var ORD = {"2":"segundo","3":"tercero","4":"cuarto","5":"quinto","6":"sexto"};
+var AS = {M:"Matemáticas",R:"Robótica",E:"Entrenamiento Cognitivo",T:"Matemáticas (T. Mat)"};
+function hm(m){ return Math.floor(m/60) + ":" + ("0" + m%60).slice(-2); }
+function nombre(c){ if (c === "G") return "guardia"; if (c === "P") return "Proyecto"; var g = c.slice(-2); return AS[c.charAt(0)] + " en " + ORD[g.charAt(0)] + " " + g.charAt(1); }
+function corto(c){ if (c === "G") return "Guardia"; if (c === "P") return "Proyecto"; var g = c.slice(-2); return ({M:"Mates",R:"Robótica",E:"E. Cognitivo",T:"T. Mat"})[c.charAt(0)] + " " + g.charAt(0) + ".º " + g.charAt(1); }
+/* clases del día d (0 = lunes … 4 = viernes) */
+function clases(d){ if (d < 0 || d > 4) return []; return T.map(function(r, b){ return { c: r[d], ini: H[b][1], fin: (b === 1 && d === 4) ? 645 : H[b][2], hora: H[b][0], txt: nombre(r[d]) }; }); }
+function pausa(d, m){ if (m >= 630 && m < 645 && d < 4) return "la L-15"; if (m >= 645 && m < 675) return "el recreo"; if (m >= 810 && m < 930) return "la hora de comer"; return ""; }
+function frase(k){ return (k.c === "G" ? "tienes guardia" : "tienes " + k.txt); }
+function sig(d){ var n = d + 1, q = "Mañana"; if (d >= 4) { n = 0; q = "El lunes"; } return { d: n, q: q }; }
+function primeraDe(d, q){ var k = clases(d)[0]; return q + " a primera hora, a las 9, " + frase(k) + "."; }
+function lista(d){ return clases(d).map(function(k){ return "a las " + k.hora + ", " + (k.c === "G" ? "guardia" : k.txt); }).join("; ") + "."; }
+/* d: 0 = lunes … 6 = domingo · m: minutos desde las 00:00 */
+function ahora(d, m, solo){
+ var cl = clases(d);
+ if (!cl.length || m >= cl[cl.length-1].fin) { var s = sig(d); return (cl.length ? "Por hoy ya has terminado. " : "Hoy no tienes clase. ") + primeraDe(s.d, s.q); }
+ if (m < 540) return primeraDe(d, "Hoy");
+ for (var i = 0; i < cl.length; i++) {
+  var k = cl[i];
+  if (m >= k.ini && m < k.fin) {
+   var nx = cl[i+1], t = solo ? "" : "Ahora, hasta las " + hm(k.fin) + ", " + frase(k) + ". ";
+   if (nx) return t + "Tu próxima clase es a las " + nx.hora + ": " + (nx.c === "G" ? "guardia" : nx.txt) + ".";
+   var s2 = sig(d); return t + "Es tu última clase de hoy. " + primeraDe(s2.d, s2.q);
+  }
+ }
+ var p = pausa(d, m), nx2 = cl.filter(function(k){ return k.ini > m; })[0];
+ return (p ? "Ahora es " + p + ". " : "") + "Tu próxima clase es a las " + nx2.hora + ": " + (nx2.c === "G" ? "guardia" : nx2.txt) + ".";
+}
+function proxima(d, m){ return ahora(d, m, true); }
+function primera(d, m){ var cl = clases(d); if (cl.length && m < cl[cl.length-1].fin) return primeraDe(d, "Hoy"); var s = sig(d); return primeraDe(s.d, s.q); }
+function hoy(d, m){ var cl = clases(d); if (cl.length && m < cl[cl.length-1].fin) return "Hoy, " + DIAS[d] + ", tienes: " + lista(d); var s = sig(d); return (cl.length ? "Por hoy ya has terminado. " : "Hoy no tienes clase. ") + s.q + ", " + DIAS[s.d] + ", tienes: " + lista(s.d); }
+return { T:T, H:H, DIAS:DIAS, clases:clases, corto:corto, nombre:nombre, ahora:ahora, proxima:proxima, primera:primera, hoy:hoy, hm:hm };
+})();
+if (typeof module !== "undefined") module.exports = HZ;
+/* Botón 🕘 HORARIO: ver el horario semanal y oírlo (qué tengo ahora, próxima clase, hoy). Usa HZ (núcleo). */
+(function(){
+var COL = { "2A":["#1A56B0","#fff"],"2B":["#9CC3F0","#13202B"],"3A":["#A3124E","#fff"],"3B":["#F2A7BF","#13202B"],"4A":["#2D6A2E","#fff"],"4B":["#A9D8A1","#13202B"],"5A":["#0F7C8C","#fff"],"5B":["#9ED9E0","#13202B"],"6A":["#B8540A","#fff"],"6B":["#F7C58C","#13202B"] };
+function col(c){ return c === "G" ? ["#C9CED8","#13202B"] : c === "P" ? ["#E3D6B4","#13202B"] : COL[c.slice(-2)]; }
+function ahoraDM(){ var n = new Date(); return { d: (n.getDay() + 6) % 7, m: n.getHours() * 60 + n.getMinutes() }; }
+function habla(t){ try { var s = window.speechSynthesis; if (!s) { alert(t); return; } s.cancel(); var u = new SpeechSynthesisUtterance(t.replace(/\(T\. Mat\)/g, "")); u.lang = "es-ES"; var v = (s.getVoices() || []).filter(function(x){ return /^es(-|_)ES/i.test(x.lang); })[0]; if (v) u.voice = v; u.rate = 0.95; s.speak(u); } catch (e) { alert(t); } }
+function tabla(){
+ var x = ahoraDM(), dd = ["Lunes","Martes","Miércoles","Jueves","Viernes"], h = '<table class="hz-t"><tr><th><\/th>' + dd.map(function(n, i){ return '<th class="' + (i === x.d ? "hz-hoy" : "") + '">' + n + '<\/th>'; }).join("") + '<\/tr>';
+ HZ.H.forEach(function(r, b){
+  if (b === 2) h += '<tr class="hz-p"><td>10:30<\/td><td colspan="4">L-15 (10:30–10:45) · Recreo 10:45–11:15<\/td><td>Recreo<\/td><\/tr>';
+  if (b === 5) h += '<tr class="hz-p"><td>13:30<\/td><td colspan="5">Comedor (13:30–15:30)<\/td><\/tr>';
+  h += '<tr><td class="hz-h">' + r[0] + '<\/td>' + HZ.T[b].map(function(c, d){ var k = col(c), fin = (b === 1 && d === 4) ? 645 : r[2], on = d === x.d && x.m >= r[1] && x.m < fin; return '<td class="' + (d === x.d ? "hz-hoy " : "") + (on ? "hz-on" : "") + '"><span class="hz-c" style="background:' + k[0] + ';color:' + k[1] + '">' + HZ.corto(c) + (b === 1 && d === 4 ? " (hasta 10:45)" : "") + '<\/span>' + (on ? '<b class="hz-ya">AHORA<\/b>' : '') + '<\/td>'; }).join("") + '<\/tr>';
+ });
+ return h + '<\/table>';
+}
+function abre(){
+ var o = document.getElementById("hz-ov"); if (!o) { o = document.createElement("div"); o.id = "hz-ov"; document.body.appendChild(o); }
+ var x = ahoraDM();
+ o.innerHTML = '<div class="hz-box" role="dialog" aria-label="Mi horario"><div class="hz-top"><b>🕘 Mi horario 26-27<\/b><button class="hz-x" data-hz="cerrar">Cerrar ✕<\/button><\/div>' +
+  '<div class="hz-dice" id="hz-dice">' + HZ.ahora(x.d, x.m) + '<\/div>' +
+  '<div class="hz-bt"><button data-hz="ahora">🔊 ¿Qué tengo ahora?<\/button><button data-hz="proxima">🔊 Mi próxima clase<\/button><button data-hz="hoy">🔊 Mi horario de hoy<\/button><button data-hz="parar">⏹ Parar<\/button><\/div>' +
+  '<div class="hz-sc">' + tabla() + '<\/div>' +
+  '<div class="hz-siri">🎙️ <b>Con Siri:<\/b> «Oye Siri, qué clase tengo ahora» · «cuál es mi próxima clase» · «qué clase tengo a primera hora» · «qué clase tengo a las nueve» · «qué clases tengo hoy». <a href="https://soninadarder.github.io/planner/atajos/" target="_blank">Instalar los atajos de Siri en este iPhone/iPad<\/a><\/div><\/div>';
+ o.style.display = "flex";
+}
+document.addEventListener("click", function(e){
+ var t = e.target.closest("[data-hz]"); if (!t) { if (e.target.id === "hz-ov") e.target.style.display = "none"; return; }
+ var a = t.getAttribute("data-hz"), x = ahoraDM();
+ if (a === "abrir") { abre(); return; }
+ if (a === "cerrar") { document.getElementById("hz-ov").style.display = "none"; try { speechSynthesis.cancel(); } catch (z) {} return; }
+ if (a === "parar") { try { speechSynthesis.cancel(); } catch (z) {} return; }
+ var txt = HZ[a](x.d, x.m); var dz = document.getElementById("hz-dice"); if (dz) dz.textContent = txt; habla(txt);
+});
+var st = document.createElement("style");
+st.textContent = "#hz-btn{position:fixed;left:16px;bottom:16px;z-index:50;background:#0F7C8C;color:#fff;border:0;border-radius:999px;padding:10px 16px;font:inherit;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.25);cursor:pointer}" +
+ ".hz-in{font:inherit;font-weight:700;font-size:13px;background:#0F7C8C;color:#fff;border:0;border-radius:14px;padding:4px 12px;cursor:pointer;margin:2px 6px 6px 0}" +
+ "#hz-ov{position:fixed;inset:0;background:rgba(10,16,28,.55);z-index:90;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:16px}" +
+ ".hz-box{background:var(--card,#fff);color:var(--ink,#141A24);border-radius:16px;max-width:900px;width:100%;padding:16px 18px;box-shadow:0 12px 40px rgba(0,0,0,.35)}" +
+ ".hz-top{display:flex;align-items:center;justify-content:space-between;font-size:20px;margin-bottom:8px}.hz-x{font:inherit;font-size:14px;border:1px solid var(--line,#DCE1EA);background:none;color:inherit;border-radius:10px;padding:4px 10px;cursor:pointer}" +
+ ".hz-dice{background:var(--hover,#EEF2F8);border-left:5px solid #0F7C8C;border-radius:8px;padding:10px 12px;font-size:17px;font-weight:600;margin-bottom:10px}" +
+ ".hz-bt{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.hz-bt button{font:inherit;font-weight:700;font-size:15px;border:0;border-radius:12px;padding:10px 14px;background:#1B3765;color:#fff;cursor:pointer}.hz-bt button:last-child{background:#8A93A3}" +
+ ".hz-sc{overflow-x:auto}.hz-t{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}.hz-t th,.hz-t td{border:1px solid var(--line,#DCE1EA);padding:6px;text-align:center;vertical-align:middle}.hz-t th{font-size:14px}" +
+ ".hz-h{font-weight:800;white-space:nowrap}.hz-c{display:inline-block;font-weight:800;font-size:13px;padding:4px 10px;border-radius:20px;white-space:nowrap}" +
+ ".hz-hoy{background:rgba(15,124,140,.10)}th.hz-hoy{background:#0F7C8C;color:#fff}.hz-on{outline:3px solid #C8234F;outline-offset:-3px}.hz-ya{display:block;font-size:11px;color:#C8234F;margin-top:3px}" +
+ ".hz-p td{font-size:12.5px;color:var(--muted,#556072);padding:3px}.hz-siri{margin-top:12px;font-size:13.5px;color:var(--muted,#556072);line-height:1.5}.hz-siri a{color:#0F7C8C;font-weight:700}" +
+ "@media (max-width:600px){#hz-btn{padding:8px 12px;font-size:14px}.hz-dice{font-size:15px}}";
+document.head.appendChild(st);
+var b = document.createElement("button"); b.id = "hz-btn"; b.setAttribute("data-hz", "abrir"); b.textContent = "🕘 Horario"; b.title = "Mi horario (y leerlo en voz alta)"; document.body.appendChild(b);
+/* además, un botón junto a «HOY» en Inicio */
+function pon(){ var td = document.querySelector(".today"); if (td && !td.querySelector(".hz-in")) { var bb = document.createElement("button"); bb.className = "hz-in"; bb.setAttribute("data-hz", "abrir"); bb.textContent = "🕘 Mi horario · 🔊 oírlo"; var big = td.querySelector(".big"); if (big && big.nextSibling) td.insertBefore(bb, big.nextSibling); else td.appendChild(bb); } }
+new MutationObserver(function(){ clearTimeout(pon.t); pon.t = setTimeout(pon, 100); }).observe(document.body, { childList: true, subtree: true }); pon();
+})();
+
+</script>
+<!--/HORARIO-->
